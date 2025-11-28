@@ -1,6 +1,112 @@
-= Ingress Controller Benchmarking and Analysis
+= Ingress Controller Benchmarking with ingress-perf
 
-* Create multiple copies of this section as needed.
-* Remove any unnecessary sections or chapter pages.
-* Customize the section as appropriate.
-* Ensure that each page contains a manageable amount of content.
+https://github.com/cloud-bulldozer/ingress-perf/[Ingress-perf] is an open-source tool aimed at deploying and orchestrating performance benchmarks over the ingress stack of the given OpenShift cluster. Written in golang, this tool makes straight forward to define different test scenarios by using a simple YAML configuration file.
+
+Same as k8s-netperf, this tool receives periodic updates with bugfixes and enhancements, as it's currently used to detect potential performance regressions in new OpenShift versions.
+
+== Starting with Ingress-perf
+
+=== 1. Downloading latest stable version
+
+Download the latest stable release for your operating system and architecture from the https://github.com/cloud-bulldozer/ingress-perf/releases/latest[GitHub releases page].
+
+For example, if you are using Linux and amd64 architecture, you can download the v0.6.0 stable release with the following command:
+
+```bash
+curl -L https://github.com/cloud-bulldozer/ingress-perf/releases/download/v0.6.0/ingress-perf-Linux-v0.6.0-x86_64.tar.gz -o ingress-perf.tar.gz
+tar -xzf ingress-perf.tar.gz ingress-perf
+```
+
+Then you can move the ingress-perf binary to a directory in your PATH, for example:
+```bash
+sudo mv ingress-perf /usr/local/bin/
+```
+
+=== 2. Configuration
+
+As mentioned before, ingress-perf uses a simple YAML configuration file to define the test scenarios. They are documented at the https://github.com/cloud-bulldozer/ingress-perf/?tab=readme-ov-file#reference[project's site]
+
+This configuration contains a list of scenarios that Ingress-perf uses to deploy the required assets: backends (a nginx pod that serves static content) and https://github.com/cloud-bulldozer/ingress-perf?tab=readme-ov-file#supported-tools[load tools].
+
+Once these assets are deployed, ingress-perf will run the benchmarks with specified configuration, like the http termination, test concurrency, number of connections, etc.
+
+
+=== 3. Running ingress-perf
+
+Run Ingress-perf with this basic `ingress-perf.yaml` configuration file to run two benchmark scenarios with similar parameters, but different termination types: http and edge.
+
+```shell
+cat > ingress-perf.yaml <<EOF
+- termination: http
+  connections: 200
+  samples: 2
+  duration: 2m
+  path: /1024.html
+  concurrency: 18
+  tool: wrk
+  serverReplicas: 45
+  requestTimeout: 10s
+
+- termination: edge
+  connections: 200
+  samples: 2
+  duration: 2m
+  path: /1024.html
+  concurrency: 1
+  tool: wrk
+  serverReplicas: 45
+EOF
+```
+
+Then run ingress-perf with the following command:
+
+```shell
+ingress-perf run -c ingress-perf.yaml
+```
+
+The output will be similar to this:
+
+```shell
+$ ingress-perf run -c ingress-perf.yaml 
+time="2025-11-28 15:16:20" level=info msg="Running ingress-perf (heads/v0.6.0@e06373946c0c939445d3b94d871d52ccd8c7e8c4) with uuid f1bd5953-698b-4b48-88ba-c79bd6f783c8" file="ingress-perf.go:62"
+time="2025-11-28 15:16:20" level=info msg="Creating local indexer" file="runner.go:87"
+time="2025-11-28 15:16:24" level=info msg="HAProxy version: haproxy28-2.8.10-1.rhaos4.17.el9.x86_64" file="runner.go:170"
+time="2025-11-28 15:16:24" level=info msg="Deploying benchmark assets" file="runner.go:262"
+time="2025-11-28 15:16:26" level=info msg="Running test 1/2" file="runner.go:177"
+time="2025-11-28 15:16:26" level=info msg="Tool:wrk termination:http servers:45 concurrency:18 procs:1 connections:200 duration:2m0s http2:false" file="runner.go:178"
+time="2025-11-28 15:16:27" level=info msg="Waiting for replicas from deployment nginx in ns ingress-perf to be ready" file="runner.go:403"
+time="2025-11-28 15:16:29" level=info msg="Waiting for replicas from deployment ingress-perf-client in ns ingress-perf to be ready" file="runner.go:403"
+time="2025-11-28 15:16:35" level=info msg="Running sample 1/2: 2m0s" file="exec.go:102"
+time="2025-11-28 15:21:03" level=info msg="Scenario summary http: Rps=90731 avgLatency=42ms P95Latency=46ms timeouts=0 http_errors=0" file="exec.go:157"
+time="2025-11-28 15:21:03" level=info msg="Running test 2/2" file="runner.go:177"
+time="2025-11-28 15:21:03" level=info msg="Tool:wrk termination:edge servers:45 concurrency:1 procs:1 connections:200 duration:2m0s http2:false" file="runner.go:178"
+time="2025-11-28 15:21:03" level=info msg="Waiting for replicas from deployment ingress-perf-client in ns ingress-perf to be ready" file="runner.go:403"
+time="2025-11-28 15:21:04" level=info msg="Running sample 1/2: 2m0s" file="exec.go:102"
+time="2025-11-28 15:21:03" level=info msg="Scenario summary http: Rps=90731 avgLatency=42ms P95Latency=46ms timeouts=0 http_errors=0" file="exec.go:157"
+time="2025-11-28 15:21:03" level=info msg="Running test 2/2" file="runner.go:177"
+time="2025-11-28 15:21:03" level=info msg="Tool:wrk termination:edge servers:45 concurrency:1 procs:1 connections:200 duration:2m0s http2:false" file="runner.go:178"
+time="2025-11-28 15:21:03" level=info msg="Waiting for replicas from deployment ingress-perf-client in ns ingress-perf to be ready" file="runner.go:403"
+time="2025-11-28 15:21:04" level=info msg="Running sample 1/2: 2m0s" file="exec.go:102"
+time="2025-11-28 15:23:07" level=info msg="edge: Rps=67920 avgLatency=3ms P95Latency=4ms" file="exec.go:149"
+time="2025-11-28 15:23:07" level=info msg="Running sample 2/2: 2m0s" file="exec.go:102"
+time="2025-11-28 15:25:10" level=info msg="edge: Rps=66230 avgLatency=3ms P95Latency=4ms" file="exec.go:149"
+time="2025-11-28 15:25:10" level=info msg="Scenario summary edge: Rps=67075 avgLatency=3ms P95Latency=4ms timeouts=0 http_errors=0" file="exec.go:157"
+time="2025-11-28 15:25:10" level=info msg="File output/f1bd5953-698b-4b48-88ba-c79bd6f783c8.json created with 3 documents" file="runner.go:234"
+time="2025-11-28 15:25:10" level=info msg="Cleaning up resources" file="runner.go:239"
+```
+The metrics 
+
+Note that ingress-perf cleans up the resources after the benchmarks are complete, so you don't need to clean up manually.
+
+
+=== 4. Indexing the results
+
+By default, Ingress-perf stores the results in a local directory specified by `--output-dir`, by default `output`.
+
+However, you can also index the results in a remote ElasticSearch/OpenSearch instance with:
+
+```shell
+$ ingress-perf run -c ingress-perf.yaml --es-server=https://your.es-endpoint.com --es-index=ingress-perf
+```
+
+Check out the `ingress-perf run --help` for more info about the allowed flags.
